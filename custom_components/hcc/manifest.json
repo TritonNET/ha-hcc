@@ -1,0 +1,12 @@
+{
+  "domain": "hcc",
+  "name": "Hamilton City Council",
+  "version": "1.0.0",
+  "documentation": "https://github.com/TritonNET/ha-hcc",
+  "issue_tracker": "https://github.com/TritonNET/ha-hcc/issues",
+  "dependencies": [],
+  "codeowners": [ "@TritonNET" ],
+  "iot_class": "cloud_polling",
+  "integration_type": "hub",
+  "requirements": []
+}

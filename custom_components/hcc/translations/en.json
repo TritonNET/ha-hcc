@@ -1,0 +1,31 @@
+{
+  "title": "HCC Bin Collection",
+  "config": {
+    "step": {
+      "user": {
+        "title": "Configure HCC Bin Collection",
+        "description": "Enter the address exactly as accepted by the HCC API.",
+        "data": {
+          "address_string": "Address"
+        }
+      }
+    },
+    "error": {
+      "cannot_connect": "Cannot connect to API",
+      "invalid_response": "Unexpected response from API",
+      "unknown": "Unknown error",
+      "bad_interval": "Update interval out of range"
+    },
+    "abort": {}
+  },
+  "options": {
+    "step": {
+      "user": {
+        "title": "HCC Bin Options",
+        "data": {
+          "update_minutes": "Update interval (minutes)"
+        }
+      }
+    }
+  }
+}
