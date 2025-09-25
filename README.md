@@ -19,7 +19,7 @@ Fetches bin collection dates from Hamilton City Council's FightTheLandFill API.
 
 1. Copy this folder to `config/custom_components/hcc_bin`.
 2. Restart Home Assistant.
-3. Settings -> Devices & Services -> Add Integration -> "HCC Bin Collection".
+3. Settings -> Devices & Services -> Add Integration -> "Hamilton City Council".
 4. Enter your address exactly as HCC expects.
 5. Adjust update interval in the integration Options.
 
