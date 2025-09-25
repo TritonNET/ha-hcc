@@ -1,11 +1,12 @@
 from __future__ import annotations
 
 from datetime import timedelta, datetime, timezone
-from typing import Any, Dict, Optional
+from typing import Optional
+import logging
 
+import aiohttp
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator
-import aiohttp
 
 from .api import HccApiClient
 from .const import (
@@ -16,6 +17,9 @@ from .const import (
     STATUS_UNEXPECTED,
 )
 
+_LOGGER = logging.getLogger(__name__)
+
+
 class HccData:
     def __init__(self) -> None:
         self.red: Optional[datetime] = None
@@ -23,6 +27,7 @@ class HccData:
         self.last_success_fetch: Optional[datetime] = None  # UTC
         self.last_status_ok: bool = False
         self.last_status_text: str = STATUS_UNEXPECTED
+
 
 class HccCoordinator(DataUpdateCoordinator[HccData]):
     def __init__(
@@ -34,7 +39,7 @@ class HccCoordinator(DataUpdateCoordinator[HccData]):
     ) -> None:
         super().__init__(
             hass,
-            hass.helpers.logger.logging.getLogger(f"{DOMAIN}.coordinator"),
+            _LOGGER,  # <-- standard logger
             name="HCC Bin Coordinator",
             update_interval=update_interval,
         )
@@ -44,12 +49,11 @@ class HccCoordinator(DataUpdateCoordinator[HccData]):
 
     async def _async_update_data(self) -> HccData:
         """
-        We NEVER raise UpdateFailed here because we want entities to retain last successful values.
-        On failure, we just update status fields and return self.data unchanged.
+        On failure we keep previous values and set status fields;
+        we do not raise UpdateFailed so sensors keep last good value.
         """
         try:
             red_dt, yellow_dt = await self._client.fetch_collection_dates(self._address)
-            # Successful fetch
             self.data.red = red_dt
             self.data.yellow = yellow_dt
             self.data.last_success_fetch = datetime.now(timezone.utc)
