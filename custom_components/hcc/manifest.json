@@ -8,5 +8,6 @@
   "codeowners": [ "@TritonNET" ],
   "iot_class": "cloud_polling",
   "integration_type": "hub",
+  "config_flow": true,
   "requirements": []
 }
