@@ -81,11 +81,18 @@ jobs:
 
       - name: Create Release Zip
         run: |
-          # Use the EXACT name we just put into hacs.json
           ZIP_NAME="hcc_${{ steps.version.outputs.new_tag }}.zip"
           
-          # Zip specific files, INCLUDING the updated hacs.json
-          zip -r "$ZIP_NAME" custom_components README.md LICENSE hacs.json
+          mkdir staging
+          
+          cp -r custom_components/hcc/* staging/
+          cp README.md LICENSE hacs.json staging/
+          
+          cd staging
+          zip -r "../$ZIP_NAME" .
+          
+          cd ..
+          rm -rf staging
           
           echo "Created $ZIP_NAME"
 
@@ -95,7 +102,6 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           
-          # Add BOTH manifest and hacs.json
           git add "$MANIFEST_PATH" "$HACS_PATH"
           git commit -m "Bump version to ${{ steps.version.outputs.new_tag }} [skip ci]"
           git push
