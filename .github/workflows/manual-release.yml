@@ -1,0 +1,108 @@
+name: Manual Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      version_type:
+        description: 'Release Type'
+        required: true
+        default: 'auto'
+        type: choice
+        options:
+          - auto
+          - minor
+          - major
+
+permissions:
+  contents: write
+
+env:
+  MANIFEST_PATH: "custom_components/hcc/manifest.json"
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Calculate Next Version
+        id: version
+        run: |
+          # Get the latest tag, default to v0.0
+          LATEST_TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo "v0.0")
+          echo "Latest tag found: $LATEST_TAG"
+          
+          # Remove 'v' prefix
+          VERSION=${LATEST_TAG#v}
+          
+          # Split by dot
+          IFS='.' read -r -a parts <<< "$VERSION"
+          MAJOR=${parts[0]:-0}
+          MINOR=${parts[1]:-0}
+
+          # Determine Increment Logic (Auto vs Manual)
+          TYPE="${{ inputs.version_type }}"
+          
+          if [ "$TYPE" == "auto" ]; then
+            # Get the subject of the latest commit
+            LAST_COMMIT_MSG=$(git log -1 --pretty=%s)
+            echo "Last commit message: $LAST_COMMIT_MSG"
+            
+            # Check if it starts with "Major" (case-insensitive check via grep)
+            if echo "$LAST_COMMIT_MSG" | grep -iq "^Major"; then
+              TYPE="major"
+            else
+              TYPE="minor"
+            fi
+            echo "Auto-detected type: $TYPE"
+          fi
+
+          # Apply increment
+          if [ "$TYPE" == "major" ]; then
+            MAJOR=$((MAJOR + 1))
+            MINOR=0
+          else
+            MINOR=$((MINOR + 1))
+          fi
+          
+          NEW_TAG="v$MAJOR.$MINOR"
+          CLEAN_VER="$MAJOR.$MINOR"
+          
+          echo "new_tag=$NEW_TAG" >> $GITHUB_OUTPUT
+          echo "clean_ver=$CLEAN_VER" >> $GITHUB_OUTPUT
+          echo "Calculated new version: $NEW_TAG"
+
+      - name: Update manifest.json
+        run: |
+          echo "Updating $MANIFEST_PATH to version ${{ steps.version.outputs.clean_ver }}..."
+          
+          # Use the env variable defined at the top
+          tmp=$(mktemp)
+          jq --arg v "${{ steps.version.outputs.clean_ver }}" '.version = $v' "$MANIFEST_PATH" > "$tmp" && mv "$tmp" "$MANIFEST_PATH"
+          
+          cat "$MANIFEST_PATH" | grep "version"
+
+      - name: Commit and Push Changes
+        id: push
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          
+          git add "$MANIFEST_PATH"
+          git commit -m "Bump version to ${{ steps.version.outputs.new_tag }} [skip ci]"
+          git push
+          
+          echo "commit_sha=$(git rev-parse HEAD)" >> $GITHUB_OUTPUT
+
+      - name: Create Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release create ${{ steps.version.outputs.new_tag }} \
+            --generate-notes \
+            --title "${{ steps.version.outputs.new_tag }}" \
+            --target "${{ steps.push.outputs.commit_sha }}"
