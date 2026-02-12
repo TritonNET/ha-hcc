@@ -27,10 +27,8 @@ async def async_setup_entry(
     
     entities = []
     
-    # 1. Existing Status Sensor
     entities.append(HccFetchStatusBinarySensor(coordinator, address))
     
-    # 2. New Task Sensors (Red Out/In, Yellow Out/In)
     # Config: (BinColor, Type, Pre-Key, Post-Key, Name)
     tasks = [
         ("red", "out", "red_out_pre", "red_out_post", "Red Bin Put Out Due"),
@@ -118,22 +116,18 @@ class HccBinTaskBinarySensor(CoordinatorEntity[HccCoordinator], BinarySensorEnti
     async def async_added_to_hass(self) -> None:
         await super().async_added_to_hass()
         
-        # 1. Update every minute to check if time window opens/closes
         self._unsub_timer = async_track_time_interval(
             self.hass, self._update_state, timedelta(minutes=1)
         )
         
-        # 2. Listen for changes to associated entities (Numbers AND Switch)
         registry = er.async_get(self.hass)
         ids_to_track = []
         
-        # A) Track Number Entities (pre/post)
         for key in (self._pre_key, self._post_key):
             unique_id = f"{DOMAIN}_{self._address.lower()}_{key}"
             if eid := registry.async_get_entity_id("number", DOMAIN, unique_id):
                 ids_to_track.append(eid)
         
-        # B) Track Completion Switch Entity
         # Unique ID pattern must match switch.py: {DOMAIN}_{address}_{color}_{type}_complete
         switch_uid = f"{DOMAIN}_{self._address.lower()}_{self._bin_color}_{self._task_type}_complete"
         if switch_eid := registry.async_get_entity_id("switch", DOMAIN, switch_uid):
@@ -166,7 +160,6 @@ class HccBinTaskBinarySensor(CoordinatorEntity[HccCoordinator], BinarySensorEnti
     @callback
     def _update_state(self, *args):
         """Calculate if the task is currently due."""
-        # 1. Get Coordinator Data
         data = self.coordinator.data
         if not data:
             self._is_on = False
@@ -179,7 +172,6 @@ class HccBinTaskBinarySensor(CoordinatorEntity[HccCoordinator], BinarySensorEnti
             self.async_write_ha_state()
             return
 
-        # 2. Check if "Completion Switch" is ON (Dynamic Lookup)
         # If complete, "Due" is False regardless of time window
         is_complete = self._is_switch_complete()
         
@@ -190,7 +182,7 @@ class HccBinTaskBinarySensor(CoordinatorEntity[HccCoordinator], BinarySensorEnti
                 self.async_write_ha_state()
             return
 
-        # 3. Calculate Time Window
+        # Calculate Time Window
         pre_hours = self._get_number_value(self._pre_key, 6.0)
         post_hours = self._get_number_value(self._post_key, 8.0)
 
@@ -209,7 +201,6 @@ class HccBinTaskBinarySensor(CoordinatorEntity[HccCoordinator], BinarySensorEnti
             start_dt = anchor - timedelta(hours=pre_hours)
             end_dt = anchor + timedelta(hours=post_hours)
 
-        # 4. Compare with Now
         now = dt_util.now()
         is_active = start_dt <= now <= end_dt
 
