@@ -18,6 +18,7 @@ permissions:
 
 env:
   MANIFEST_PATH: "custom_components/hcc/manifest.json"
+  HACS_PATH: "hacs.json"
 
 jobs:
   release:
@@ -32,36 +33,22 @@ jobs:
       - name: Calculate Next Version
         id: version
         run: |
-          # Get the latest tag, default to v0.0
           LATEST_TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo "v0.0")
-          echo "Latest tag found: $LATEST_TAG"
-          
-          # Remove 'v' prefix
           VERSION=${LATEST_TAG#v}
-          
-          # Split by dot
           IFS='.' read -r -a parts <<< "$VERSION"
           MAJOR=${parts[0]:-0}
           MINOR=${parts[1]:-0}
-
-          # Determine Increment Logic (Auto vs Manual)
           TYPE="${{ inputs.version_type }}"
           
           if [ "$TYPE" == "auto" ]; then
-            # Get the subject of the latest commit
             LAST_COMMIT_MSG=$(git log -1 --pretty=%s)
-            echo "Last commit message: $LAST_COMMIT_MSG"
-            
-            # Check if it starts with "Major" (case-insensitive check via grep)
             if echo "$LAST_COMMIT_MSG" | grep -iq "^Major"; then
               TYPE="major"
             else
               TYPE="minor"
             fi
-            echo "Auto-detected type: $TYPE"
           fi
 
-          # Apply increment
           if [ "$TYPE" == "major" ]; then
             MAJOR=$((MAJOR + 1))
             MINOR=0
@@ -74,27 +61,31 @@ jobs:
           
           echo "new_tag=$NEW_TAG" >> $GITHUB_OUTPUT
           echo "clean_ver=$CLEAN_VER" >> $GITHUB_OUTPUT
-          echo "Calculated new version: $NEW_TAG"
 
       - name: Update manifest.json
         run: |
-          echo "Updating $MANIFEST_PATH to version ${{ steps.version.outputs.clean_ver }}..."
-          
-          # Use the env variable defined at the top
           tmp=$(mktemp)
           jq --arg v "${{ steps.version.outputs.clean_ver }}" '.version = $v' "$MANIFEST_PATH" > "$tmp" && mv "$tmp" "$MANIFEST_PATH"
+
+      - name: Update hacs.json
+        run: |
+          echo "Updating $HACS_PATH filename..."
+          # Define the specific filename for this release
+          ZIP_FILENAME="hcc_${{ steps.version.outputs.new_tag }}.zip"
           
-          cat "$MANIFEST_PATH" | grep "version"
+          # Use jq to update the filename field
+          tmp=$(mktemp)
+          jq --arg v "$ZIP_FILENAME" '.filename = $v' "$HACS_PATH" > "$tmp" && mv "$tmp" "$HACS_PATH"
+          
+          cat "$HACS_PATH"
 
       - name: Create Release Zip
         run: |
-          # Define zip name
-          ZIP_NAME="hcc-${{ steps.version.outputs.new_tag }}.zip"
+          # Use the EXACT name we just put into hacs.json
+          ZIP_NAME="hcc_${{ steps.version.outputs.new_tag }}.zip"
           
-          # Create zip excluding specific files/folders
-          # -r: recursive
-          # -x: exclude pattern
-          zip -r "$ZIP_NAME" . -x ".github/*" -x ".git/*" -x ".gitignore" -x "test_server/*"
+          # Zip specific files, INCLUDING the updated hacs.json
+          zip -r "$ZIP_NAME" custom_components README.md LICENSE hacs.json
           
           echo "Created $ZIP_NAME"
 
@@ -104,7 +95,8 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           
-          git add "$MANIFEST_PATH"
+          # Add BOTH manifest and hacs.json
+          git add "$MANIFEST_PATH" "$HACS_PATH"
           git commit -m "Bump version to ${{ steps.version.outputs.new_tag }} [skip ci]"
           git push
           
@@ -114,8 +106,7 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          # Define the zip name again to match above
-          ZIP_NAME="hcc-${{ steps.version.outputs.new_tag }}.zip"
+          ZIP_NAME="hcc_${{ steps.version.outputs.new_tag }}.zip"
 
           gh release create ${{ steps.version.outputs.new_tag }} \
             "$ZIP_NAME" \
