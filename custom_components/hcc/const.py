@@ -2,6 +2,7 @@ DOMAIN = "hcc"
 
 CONF_ADDRESS = "address_string"
 CONF_UPDATE_MINUTES = "update_minutes"
+CONF_API_URL = "api_url"
 
 DEFAULT_UPDATE_MINUTES = 60
 MIN_UPDATE_MINUTES = 5
@@ -15,4 +16,5 @@ STATUS_NETWORK = "network_error"
 STATUS_JSON = "json_parsing"
 STATUS_UNEXPECTED = "unexpected_error"
 
-PLATFORMS = ["sensor", "binary_sensor"]
+# Added "button" to the list
+PLATFORMS = ["sensor", "binary_sensor", "number", "button", "switch"]

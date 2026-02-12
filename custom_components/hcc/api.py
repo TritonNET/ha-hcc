@@ -8,19 +8,17 @@ import aiohttp
 from .const import API_BASE
 
 class HccApiClient:
-    def __init__(self, session: aiohttp.ClientSession) -> None:
+    def __init__(self, session: aiohttp.ClientSession, api_url: str = API_BASE) -> None:
         self._session = session
+        self._api_url = api_url
 
     async def fetch_collection_dates(self, address: str, timeout_sec: int = 10) -> Tuple[Optional[dt_date], Optional[dt_date]]:
         """
         Calls the API and returns (red_date, yellow_date) as date objects (no time).
-        Raises:
-            aiohttp.ClientError for network issues
-            ValueError for JSON parsing / shape issues
         """
         params = {"address_string": address}
         try:
-            async with self._session.get(API_BASE, params=params, timeout=timeout_sec) as resp:
+            async with self._session.get(self._api_url, params=params, timeout=timeout_sec) as resp:
                 resp.raise_for_status()
                 data = await resp.json(content_type=None)
         except asyncio.TimeoutError as ex:
@@ -39,8 +37,6 @@ class HccApiClient:
             if not s:
                 return None
             try:
-                # Input example: "2025-10-08T00:00:00" (naive)
-                # We ignore timezone entirely and keep only the calendar date.
                 return datetime.fromisoformat(s).date()
             except Exception as ex:
                 raise ValueError(f"Invalid timestamp: {s}") from ex

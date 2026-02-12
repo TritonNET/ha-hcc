@@ -9,7 +9,7 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator
 
 from .api import HccApiClient
-from .const import DOMAIN, STATUS_SUCCESS, STATUS_NETWORK, STATUS_JSON, STATUS_UNEXPECTED
+from .const import DOMAIN, STATUS_SUCCESS, STATUS_NETWORK, STATUS_JSON, STATUS_UNEXPECTED, API_BASE
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -17,15 +17,17 @@ class HccData:
     def __init__(self) -> None:
         self.red: Optional[dt_date] = None
         self.yellow: Optional[dt_date] = None
-        self.last_success_fetch: Optional[datetime] = None  # UTC timestamp
+        self.last_success_fetch: Optional[datetime] = None
         self.last_status_ok: bool = False
         self.last_status_text: str = STATUS_UNEXPECTED
 
 class HccCoordinator(DataUpdateCoordinator[HccData]):
-    def __init__(self, hass: HomeAssistant, address: str, update_interval: timedelta, session: aiohttp.ClientSession) -> None:
+    # Add api_url argument
+    def __init__(self, hass: HomeAssistant, address: str, update_interval: timedelta, session: aiohttp.ClientSession, api_url: str) -> None:
         super().__init__(hass, _LOGGER, name="HCC Bin Coordinator", update_interval=update_interval)
         self._address = address
-        self._client = HccApiClient(session)
+        # Pass api_url to the client
+        self._client = HccApiClient(session, api_url=api_url)
         self.data = HccData()
 
     async def _async_update_data(self) -> HccData:
