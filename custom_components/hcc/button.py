@@ -6,7 +6,7 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
-from .const import DOMAIN, CONF_ADDRESS
+from .const import DOMAIN, CONF_ADDRESS, sanitize_address
 from .coordinator import HccCoordinator
 
 async def async_setup_entry(
@@ -26,7 +26,12 @@ class HccRefreshButton(CoordinatorEntity[HccCoordinator], ButtonEntity):
     def __init__(self, coordinator: HccCoordinator, address: str) -> None:
         super().__init__(coordinator)
         self._address = address
-        self._attr_unique_id = f"{DOMAIN}_{address.lower()}_refresh_button"
+        
+        sanitized = sanitize_address(address)
+        base_id = f"hcc_bin_{sanitized}_refresh_collection_data"
+        self._attr_unique_id = base_id
+        self.entity_id = f"button.{base_id}"
+        
         self._attr_device_info = {
             "identifiers": {(DOMAIN, f"addr:{address.lower()}")},
             "name": f"HCC Bin ({address})",
@@ -35,5 +40,4 @@ class HccRefreshButton(CoordinatorEntity[HccCoordinator], ButtonEntity):
         }
 
     async def async_press(self) -> None:
-        """Handle the button press."""
         await self.coordinator.async_request_refresh()

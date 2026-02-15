@@ -13,7 +13,7 @@ from homeassistant.helpers.event import async_track_time_interval, async_track_s
 from homeassistant.helpers import entity_registry as er
 from homeassistant.util import dt as dt_util
 
-from .const import DOMAIN, CONF_ADDRESS
+from .const import DOMAIN, CONF_ADDRESS, sanitize_address
 from .coordinator import HccCoordinator
 
 async def async_setup_entry(
@@ -25,29 +25,24 @@ async def async_setup_entry(
     address = entry.data[CONF_ADDRESS]
 
     entities = []
-    # Config: (BinColor, Type, Pre-Key, Post-Key, Name)
+    # Config: (BinColor, Type, Pre-Key, Post-Key, Switch-Postfix, Name)
     tasks = [
-        ("red", "out", "red_out_pre", "red_out_post", "Red Bin Put Out Complete"),
-        ("red", "in", "red_in_pre", "red_in_post", "Red Bin Bring In Complete"),
-        ("yellow", "out", "yellow_out_pre", "yellow_out_post", "Yellow Bin Put Out Complete"),
-        ("yellow", "in", "yellow_in_pre", "yellow_in_post", "Yellow Bin Bring In Complete"),
+        ("red", "out", "red_bin_put_out_pre_hours", "red_bin_put_out_post_hours", "red_bin_put_out_complete", "Red Bin Put Out Complete"),
+        ("red", "in", "red_bin_bring_in_pre_hours", "red_bin_bring_in_post_hours", "red_bin_bring_in_complete", "Red Bin Bring In Complete"),
+        ("yellow", "out", "yellow_bin_put_out_pre_hours", "yellow_bin_put_out_post_hours", "yellow_bin_put_out_complete", "Yellow Bin Put Out Complete"),
+        ("yellow", "in", "yellow_bin_bring_in_pre_hours", "yellow_bin_bring_in_post_hours", "yellow_bin_bring_in_complete", "Yellow Bin Bring In Complete"),
     ]
 
-    for bin_color, task_type, pre_key, post_key, name in tasks:
+    for bin_color, task_type, pre_key, post_key, switch_postfix, name in tasks:
         entities.append(
             HccTaskCompletionSwitch(
-                coordinator, address, bin_color, task_type, pre_key, post_key, name
+                coordinator, address, bin_color, task_type, pre_key, post_key, switch_postfix, name
             )
         )
 
     async_add_entities(entities)
 
 class HccTaskCompletionSwitch(CoordinatorEntity[HccCoordinator], SwitchEntity, RestoreEntity):
-    """
-    Switch to mark a bin task as completed.
-    - Resets to OFF automatically when the window ends.
-    - Enabled only when the task is 'Due' (or if already ON, to allow undo).
-    """
     _attr_has_entity_name = True
 
     def __init__(
@@ -58,6 +53,7 @@ class HccTaskCompletionSwitch(CoordinatorEntity[HccCoordinator], SwitchEntity, R
         task_type: str,
         pre_key: str,
         post_key: str,
+        switch_postfix: str,
         name: str
     ) -> None:
         super().__init__(coordinator)
@@ -68,7 +64,12 @@ class HccTaskCompletionSwitch(CoordinatorEntity[HccCoordinator], SwitchEntity, R
         self._post_key = post_key
         
         self._attr_name = name
-        self._attr_unique_id = f"{DOMAIN}_{address.lower()}_{bin_color}_{task_type}_complete"
+        
+        sanitized = sanitize_address(address)
+        base_id = f"hcc_bin_{sanitized}_{switch_postfix}"
+        self._attr_unique_id = base_id
+        self.entity_id = f"switch.{base_id}"
+        
         self._attr_device_info = {
             "identifiers": {(DOMAIN, f"addr:{address.lower()}")},
             "name": f"HCC Bin ({address})",
@@ -82,21 +83,20 @@ class HccTaskCompletionSwitch(CoordinatorEntity[HccCoordinator], SwitchEntity, R
     async def async_added_to_hass(self) -> None:
         await super().async_added_to_hass()
 
-        # 1. Restore state (if HA restarted mid-window)
         if (last_state := await self.async_get_last_state()) is not None:
             if last_state.state == "on":
                 self._is_on = True
 
-        # 2. Update logic every minute (to handle auto-reset)
         self._unsub_timer = async_track_time_interval(
             self.hass, self._update_logic, timedelta(minutes=1)
         )
 
-        # 3. Listen for changes to Number entities (to calc window correctly)
         registry = er.async_get(self.hass)
         ids_to_track = []
+        sanitized = sanitize_address(self._address)
+        
         for key in (self._pre_key, self._post_key):
-            unique_id = f"{DOMAIN}_{self._address.lower()}_{key}"
+            unique_id = f"hcc_bin_{sanitized}_{key}"
             if eid := registry.async_get_entity_id("number", DOMAIN, unique_id):
                 ids_to_track.append(eid)
         
@@ -105,7 +105,6 @@ class HccTaskCompletionSwitch(CoordinatorEntity[HccCoordinator], SwitchEntity, R
                 self.hass, ids_to_track, self._update_logic
             )
 
-        # Initial Check
         self._update_logic()
 
     async def async_will_remove_from_hass(self) -> None:
@@ -121,9 +120,6 @@ class HccTaskCompletionSwitch(CoordinatorEntity[HccCoordinator], SwitchEntity, R
 
     @property
     def available(self) -> bool:
-        # Available if Coordinator is happy AND (Window is Active OR Switch is currently ON)
-        # This allows the switch to be clicked 'OFF' if it was turned on by mistake,
-        # but prevents it from being turned 'ON' if the window isn't there.
         return (
             self.coordinator.last_update_success 
             and (self._is_window_active or self._is_on)
@@ -144,7 +140,6 @@ class HccTaskCompletionSwitch(CoordinatorEntity[HccCoordinator], SwitchEntity, R
 
     @callback
     def _update_logic(self, *args):
-        """Calculate window state and handle auto-reset."""
         data = self.coordinator.data
         if not data:
             return
@@ -155,7 +150,6 @@ class HccTaskCompletionSwitch(CoordinatorEntity[HccCoordinator], SwitchEntity, R
             self.async_write_ha_state()
             return
 
-        # --- Re-calculate Window (Same logic as binary_sensor) ---
         pre_hours = self._get_number_value(self._pre_key, 6.0)
         post_hours = self._get_number_value(self._post_key, 8.0)
 
@@ -174,17 +168,16 @@ class HccTaskCompletionSwitch(CoordinatorEntity[HccCoordinator], SwitchEntity, R
         now = dt_util.now()
         is_active = start_dt <= now <= end_dt
         
-        # --- Logic ---
         self._is_window_active = is_active
 
-        # Auto-Reset: If window is over, force switch OFF
         if not is_active and self._is_on:
             self._is_on = False
         
         self.async_write_ha_state()
 
     def _get_number_value(self, key_suffix: str, default: float) -> float:
-        unique_id = f"{DOMAIN}_{self._address.lower()}_{key_suffix}"
+        sanitized = sanitize_address(self._address)
+        unique_id = f"hcc_bin_{sanitized}_{key_suffix}"
         ent_reg = er.async_get(self.hass)
         entity_id = ent_reg.async_get_entity_id("number", DOMAIN, unique_id)
         if entity_id:

@@ -1,3 +1,5 @@
+import re
+
 DOMAIN = "hcc"
 
 CONF_ADDRESS = "address_string"
@@ -16,5 +18,8 @@ STATUS_NETWORK = "network_error"
 STATUS_JSON = "json_parsing"
 STATUS_UNEXPECTED = "unexpected_error"
 
-# Added "button" to the list
 PLATFORMS = ["sensor", "binary_sensor", "number", "button", "switch"]
+
+def sanitize_address(address: str) -> str:
+    """Sanitize the address string to be safe for entity IDs."""
+    return re.sub(r'[^a-z0-9]+', '_', address.lower()).strip('_')

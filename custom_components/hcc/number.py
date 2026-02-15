@@ -6,19 +6,18 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.restore_state import RestoreEntity
 
-from .const import DOMAIN, CONF_ADDRESS
+from .const import DOMAIN, CONF_ADDRESS, sanitize_address
 
 # Define the configuration structure for our 8 numbers
-# (Key, Friendly Name, Default Value)
 NUMBER_TYPES = [
-    ("red_out_pre", "Red Bin Put Out Pre Hours", 6.0),
-    ("red_out_post", "Red Bin Put Out Post Hours", 8.0),
-    ("red_in_pre", "Red Bin Bring In Pre Hours", 4.0),
-    ("red_in_post", "Red Bin Bring In Post Hours", 5.0),
-    ("yellow_out_pre", "Yellow Bin Put Out Pre Hours", 6.0),
-    ("yellow_out_post", "Yellow Bin Put Out Post Hours", 8.0),
-    ("yellow_in_pre", "Yellow Bin Bring In Pre Hours", 4.0),
-    ("yellow_in_post", "Yellow Bin Bring In Post Hours", 5.0),
+    ("red_bin_put_out_pre_hours", "Red Bin Put Out Pre Hours", 6.0),
+    ("red_bin_put_out_post_hours", "Red Bin Put Out Post Hours", 8.0),
+    ("red_bin_bring_in_pre_hours", "Red Bin Bring In Pre Hours", 4.0),
+    ("red_bin_bring_in_post_hours", "Red Bin Bring In Post Hours", 5.0),
+    ("yellow_bin_put_out_pre_hours", "Yellow Bin Put Out Pre Hours", 6.0),
+    ("yellow_bin_put_out_post_hours", "Yellow Bin Put Out Post Hours", 8.0),
+    ("yellow_bin_bring_in_pre_hours", "Yellow Bin Bring In Pre Hours", 4.0),
+    ("yellow_bin_bring_in_post_hours", "Yellow Bin Bring In Post Hours", 5.0),
 ]
 
 async def async_setup_entry(
@@ -35,8 +34,6 @@ async def async_setup_entry(
     async_add_entities(entities)
 
 class HccWindowNumber(RestoreEntity, NumberEntity):
-    """Number entity to configure offset hours."""
-    
     _attr_has_entity_name = True
     _attr_mode = NumberMode.BOX
     _attr_native_min_value = 0
@@ -50,8 +47,10 @@ class HccWindowNumber(RestoreEntity, NumberEntity):
         self._attr_name = name
         self._default_val = default_val
         
-        # Unique ID matches the pattern we will generate in binary_sensor to find this entity
-        self._attr_unique_id = f"{DOMAIN}_{address.lower()}_{key}"
+        sanitized = sanitize_address(address)
+        base_id = f"hcc_bin_{sanitized}_{key}"
+        self._attr_unique_id = base_id
+        self.entity_id = f"number.{base_id}"
         
         self._attr_device_info = {
             "identifiers": {(DOMAIN, f"addr:{address.lower()}")},
@@ -60,22 +59,17 @@ class HccWindowNumber(RestoreEntity, NumberEntity):
             "model": "FightTheLandFill",
         }
         
-        # Set initial value 
         self._attr_native_value = default_val
 
     async def async_added_to_hass(self) -> None:
-        """Restore last state."""
         await super().async_added_to_hass()
-        # Use the generic RestoreEntity method
         if (last_state := await self.async_get_last_state()) is not None:
             if last_state.state not in ("unknown", "unavailable"):
                 try:
                     self._attr_native_value = float(last_state.state)
                 except ValueError:
-                    # Keep default if restoration fails
                     pass
 
     async def async_set_native_value(self, value: float) -> None:
-        """Update the current value."""
         self._attr_native_value = value
         self.async_write_ha_state()
