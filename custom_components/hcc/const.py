@@ -10,7 +10,7 @@ DEFAULT_UPDATE_MINUTES = 60
 MIN_UPDATE_MINUTES = 5
 MAX_UPDATE_MINUTES = 1440
 
-API_BASE = "https://api.hcc.govt.nz/FightTheLandFill/get_Collection_Dates"
+API_BASE = "https://api2.hcc.govt.nz/FightTheLandFill/get_Collection_Dates"
 
 # Status text constants
 STATUS_SUCCESS = "success"

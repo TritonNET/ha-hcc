@@ -38,13 +38,24 @@ class HccCoordinator(DataUpdateCoordinator[HccData]):
             self.data.last_success_fetch = datetime.now(timezone.utc)
             self.data.last_status_ok = True
             self.data.last_status_text = STATUS_SUCCESS
-        except aiohttp.ClientError:
+        except aiohttp.ClientResponseError as ex:
+            # HTTP status error (e.g. the API path was retired) - not a transport fault.
+            _LOGGER.error(
+                "HCC fetch failed for %s: HTTP %s %s from %s",
+                self._address, ex.status, ex.message, ex.request_info.real_url,
+            )
             self.data.last_status_ok = False
             self.data.last_status_text = STATUS_NETWORK
-        except ValueError:
+        except aiohttp.ClientError as ex:
+            _LOGGER.error("HCC fetch failed for %s: connection error: %s", self._address, ex)
+            self.data.last_status_ok = False
+            self.data.last_status_text = STATUS_NETWORK
+        except ValueError as ex:
+            _LOGGER.error("HCC fetch failed for %s: bad response body: %s", self._address, ex)
             self.data.last_status_ok = False
             self.data.last_status_text = STATUS_JSON
         except Exception:
+            _LOGGER.exception("HCC fetch failed for %s: unexpected error", self._address)
             self.data.last_status_ok = False
             self.data.last_status_text = STATUS_UNEXPECTED
 
